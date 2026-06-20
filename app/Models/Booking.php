@@ -5,32 +5,23 @@ namespace App\Models;
 use App\Models\Passenger;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Str;
 
 class Booking extends Model
 {
     protected $fillable = [
-        'reference',
-        'flight_id',
-        'carrier',
-        'flight_number',
-        'origin',
-        'destination',
-        'departure_at',
-        'arrival_at',
-        'stops',
-        'price_usd',
-        'status',
+        'reference_id', 'flight_identifier', 'carrier', 
+        'flight_no', 'provider_used', 'total_price', 'passenger_details'
     ];
- 
+
     protected $casts = [
-        'departure_at' => 'datetime',
-        'arrival_at'   => 'datetime',
-        'price_usd'    => 'decimal:2',
-        'stops'        => 'integer',
+        'passenger_details' => 'array'
     ];
- 
-    public function passengers(): HasMany
+
+    protected static function booted()
     {
-        return $this->hasMany(Passenger::class);
+        static::creating(function ($booking) {
+            $booking->reference_id = 'BK-' . strtoupper(Str::random(8));
+        });
     }
 }
