@@ -2,7 +2,9 @@
 
 namespace App\Models;
 
+use App\Models\Passenger;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Booking extends Model
 {
