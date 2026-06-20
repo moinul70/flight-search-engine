@@ -1,58 +1,402 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Flight Search Aggregator Engine
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+An enterprise-ready, fault-tolerant flight search aggregator engine built with **Laravel 13** and **MySQL**. The system concurrently structures lookups from multiple distinct third-party provider schemas, eliminates duplicate physical inventory via unique identifier compositions, and presents cleanly serialized data contracts via Laravel API Resources.
 
-## About Laravel
+---
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Features
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+* Multi-provider flight search aggregation
+* Provider schema normalization through DTOs
+* Duplicate flight detection and price comparison
+* Stable flight identifiers for downstream operations
+* Booking creation and retrieval
+* Fault-tolerant provider execution
+* API Resource-based response serialization
+* Extensible provider architecture
+* Unit and Feature test coverage
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+---
 
-## Learning Laravel
+# 1. System Architecture & Component Communication
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+The engine employs a **Fan-Out Aggregation Architecture** driven by a Strategy/Adapter design pattern. This ensures the application remains highly extensible, allowing developers to plug in new flight providers without altering core lookup or booking workflows.
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+### API Layer (Controllers & Resources)
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+Responsible for:
 
-## Agentic Development
+* Validating incoming requests
+* Delegating business operations to services
+* Returning standardized JSON responses through Laravel API Resources
 
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+### Aggregation Core (`FlightAggregator`)
 
-```bash
-composer require laravel/boost --dev
+Acts as the orchestration layer:
 
-php artisan boost:install
+* Executes provider searches
+* Handles provider failures gracefully
+* Merges normalized flight data
+* Deduplicates flights
+* Applies filtering and sorting
+
+### Provider Strategy Layer (`FlightProviderInterface`)
+
+Defines a strict contract that every provider implementation must follow.
+
+This enables:
+
+* Easy provider replacement
+* Independent provider testing
+* Consistent normalization behavior
+
+### Domain DTO (`FlightDTO`)
+
+The internal source of truth.
+
+Regardless of how a provider structures:
+
+* Dates
+* Prices
+* Flight numbers
+* Routes
+
+all incoming data is immediately transformed into a unified DTO representation.
+
+---
+
+## Deduplication Strategy
+
+Flights representing the same physical journey are grouped using:
+
+```text
+carrier + flight_number + departure_time
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+A stable Base64-encoded composite identifier is generated from this key.
 
-## Contributing
+Example:
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+```text
+EK + EK585 + 2026-07-01T03:45:00
+```
 
-## Code of Conduct
+The engine:
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+* Marks the cheapest fare as `best_fare`
+* Preserves all provider offers in `all_offers`
+* Prevents duplicate search results from appearing to users
 
-## Security Vulnerabilities
+---
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+## Fault Isolation & Response Completeness
 
-## License
+Provider failures never break the search experience.
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+If a provider:
+
+* Times out
+* Returns malformed data
+* Throws an exception
+
+the failure is isolated and captured.
+
+Example metadata:
+
+```json
+{
+  "status": "PARTIAL",
+  "providers_requested": 3,
+  "providers_responded": 2,
+  "providers_failed": [
+    "ProviderC"
+  ]
+}
+```
+
+This allows consumers to understand result completeness.
+
+---
+
+# 2. Directory Layout & Folder Structure
+
+```text
+flight-aggregator/
+├── app/
+│   ├── Contracts/
+│   │   └── FlightProviderInterface.php
+│   │
+│   ├── DTOs/
+│   │   └── FlightDTO.php
+│   │
+│   ├── Http/
+│   │   ├── Controllers/
+│   │   │   ├── BookingController.php
+│   │   │   └── FlightController.php
+│   │   │
+│   │   └── Resources/
+│   │       ├── FlightResource.php
+│   │       └── BookingResource.php
+│   │
+│   ├── Models/
+│   │   ├── Booking.php
+│   │   │   │
+│   └── Services/
+│       ├── FlightAggregator.php
+│       ├── ProviderAService.php
+│       ├── ProviderBService.php
+│       └── ProviderCService.php
+│
+├── database/
+│   └── migrations/
+│       ├── 2026_06_21_000000_create_bookings_table.php
+│      │
+├── routes/
+│   └── api.php
+│
+├── tests/
+│   ├── Feature/
+│   └── Unit/
+│
+├── README.md
+└── ARCHITECTURE.md
+```
+
+---
+
+# 3. Installation
+
+## Clone Repository
+
+```bash
+git clone https://github.com/moinul70/flight-search-engine.git
+
+cd flight-search-engine
+```
+
+## Install Dependencies
+
+```bash
+composer install
+```
+
+## Environment Setup
+
+```bash
+cp .env.example .env
+```
+
+Generate application key:
+
+```bash
+php artisan key:generate
+```
+
+Configure database credentials in `.env`:
+
+```env
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=flight_search_engine
+DB_USERNAME=root
+DB_PASSWORD=
+```
+
+## Run Migrations
+
+```bash
+php artisan migrate
+```
+
+## Start Application
+
+```bash
+php artisan serve
+```
+
+Application will be available at:
+
+```text
+http://localhost:8000
+```
+
+---
+
+# 4. API Routes
+
+```php
+Route::prefix('flights')->group(function () {
+    Route::get('search', [FlightController::class, 'search']);
+});
+
+Route::prefix('bookings')->group(function () {
+    Route::post('/', [BookingController::class, 'store']);
+    Route::get('{reference}', [BookingController::class, 'show']);
+});
+```
+
+---
+
+# 5. Flight Search API
+
+## Request
+
+```http
+GET /api/flights/search
+```
+
+### Query Parameters
+
+| Parameter  | Required | Example    |
+| ---------- | -------- | ---------- |
+| from       | Yes      | DAC        |
+| to         | Yes      | DXB        |
+| date       | Yes      | 2026-07-01 |
+| passengers | Yes      | 2          |
+| sort       | No       | price      |
+| carrier    | No       | EK         |
+| stops      | No       | 0          |
+| max_price  | No       | 300        |
+
+Example:
+
+```http
+GET /api/flights/search?from=DAC&to=DXB&date=2026-07-01&passengers=2
+```
+
+---
+
+## Sample Response
+
+```json
+{
+  "meta": {
+    "status": "COMPLETE",
+    "providers_requested": 3,
+    "providers_responded": 3,
+    "providers_failed": []
+  },
+  "data": [
+    {
+      "flight_id": "RUs6RUs1ODU6MTc4Mjg3NzUwMA==",
+      "carrier": "EK",
+      "flight_number": "EK585",
+      "from": "DAC",
+      "to": "DXB",
+      "departure": "2026-07-01T03:45:00Z",
+      "arrival": "2026-07-01T06:50:00Z",
+      "stops": 0,
+      "best_fare": 399,
+      "currency": "USD"
+    }
+  ]
+}
+```
+
+---
+
+# 6. Create Booking
+
+## Request
+
+```http
+POST /api/bookings
+```
+
+### Payload
+
+```json
+{
+  "flight_id": "RUs6RUs1ODU6MTc4Mjg3NzUwMA==",
+  "passengers": [
+    {
+      "first_name": "John",
+      "last_name": "Doe"
+    }
+  ]
+}
+```
+
+---
+
+## Response
+
+```json
+{
+  "reference": "BK-8H5J2K",
+  "flight_id": "RUs6RUs1ODU6MTc4Mjg3NzUwMA==",
+  "status": "CONFIRMED"
+}
+```
+
+---
+
+# 7. Retrieve Booking
+
+## Request
+
+```http
+GET /api/bookings/BK-8H5J2K
+```
+
+---
+
+## Response
+
+```json
+{
+  "reference": "BK-8H5J2K",
+  "flight_id": "RUs6RUs1ODU6MTc4Mjg3NzUwMA==",
+  "passengers": [
+    {
+      "first_name": "John",
+      "last_name": "Doe"
+    }
+  ]
+}
+```
+
+---
+
+# 8. Testing
+
+Run all tests:
+
+```bash
+php artisan test
+```
+
+Run feature tests:
+
+```bash
+php artisan test --testsuite=Feature
+```
+
+Run unit tests:
+
+```bash
+php artisan test --testsuite=Unit
+```
+
+---
+
+# 9. Future Improvements
+
+Potential enhancements beyond the scope of this exercise:
+
+* Parallel provider execution using Laravel HTTP Pool
+* Redis caching for repeated searches
+* Provider health monitoring
+* Circuit breaker implementation
+* Search result pagination
+* OpenAPI / Swagger documentation
+* Distributed tracing and observability
+* Booking snapshot persistence
+* Queue-based provider synchronization
+
+---
+
+# License
+
+This project is provided as a technical assessment implementation and demonstration of scalable backend architecture patterns using Laravel.
